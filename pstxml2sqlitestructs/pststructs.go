@@ -63,6 +63,7 @@ type Message struct {
 	AttrUnmodified            string          `xml:" unmodified,attr"  json:",omitempty"`
 	AttrUnsent                string          `xml:" unsent,attr"  json:",omitempty"`
 	Attachments               *Attachments    `xml:" attachments,omitempty" json:"attachments,omitempty"`
+	Body                      string          `xml:"body,omitempty" json:"body,omitempty" gorm:"text"`
 	From                      *From           `xml:" from,omitempty" json:"from,omitempty"`
 	From_name                 *From_name      `xml:" from_name,omitempty" json:"from_name,omitempty"`
 	Message_id                *Message_id     `xml:" message_id,omitempty" json:"message_id,omitempty"`
@@ -71,6 +72,10 @@ type Message struct {
 	Recipients                *Recipients     `xml:" recipients,omitempty" json:"recipients,omitempty"`
 	Return_path               *Return_path    `xml:" return_path,omitempty" json:"return_path,omitempty"`
 	Subject                   *Subject        `xml:" subject,omitempty" json:"subject,omitempty"`
+}
+
+type Body struct {
+	Text string `xml:",chardata" json:",omitempty"`
 }
 
 type Message_id struct {
