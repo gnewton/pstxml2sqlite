@@ -13,10 +13,11 @@ import (
 	"flag"
 	"fmt"
 	lib "github.com/gnewton/pstxml2sqlite/pstxml2sqlitestructs"
+	"github.com/jinzhu/gorm"
+	_ "github.com/jinzhu/gorm/dialects/sqlite"
 	"io"
 	"log"
 	"os"
-	"runtime"
 	"strings"
 )
 
@@ -53,7 +54,15 @@ var out int = -1
 var counters map[string]*int
 
 func main() {
-	runtime.GOMAXPROCS(runtime.NumCPU())
+
+	db, err := gorm.Open("sqlite3", "test.db")
+	if err != nil {
+		panic("failed to connect database")
+	}
+	defer db.Close()
+
+	db.CreateTable(&lib.Message{})
+
 	flag.Parse()
 
 	if musage {
@@ -78,17 +87,30 @@ func main() {
 		return
 	}
 
+	counter := 0
+	tx := db.Begin()
+
 	decoder := xml.NewDecoder(reader)
 	counters = make(map[string]*int)
 	for {
+
 		token, _ := decoder.Token()
 		if token == nil {
 			break
 		}
 		switch se := token.(type) {
 		case xml.StartElement:
-			handleFeed(se, decoder, outFlag)
+			handleFeed(se, decoder, outFlag, tx)
 		}
+		counter = counter + 1
+		if counter == 10000 {
+			tx.Commit()
+			counter = 0
+			tx = db.Begin()
+		}
+	}
+	if counter > 0 {
+		tx.Commit()
 	}
 	if xmlFile != nil {
 		defer xmlFile.Close()
@@ -100,45 +122,30 @@ func main() {
 	}
 }
 
-func handleFeed(se xml.StartElement, decoder *xml.Decoder, outFlag *bool) {
-	if outFlag == &countAll {
-		incrementCounter(se.Name.Space, se.Name.Local)
-	} else {
-		if !oneLevelDown {
-			if se.Name.Local == "messages" && se.Name.Space == "" {
-				var item lib.Messages
-				decoder.DecodeElement(&item, &se)
-				switch outFlag {
-				case &toJson:
-					writeJson(item)
-				case &toXml:
-					writeXml(item)
-				}
-			}
-		} else {
+func handleFeed(se xml.StartElement, decoder *xml.Decoder, outFlag *bool, db *gorm.DB) {
+	if se.Name.Local == "message" && se.Name.Space == "" {
+		var item lib.Message
+		decoder.DecodeElement(&item, &se)
+		switch outFlag {
+		case &toJson:
+			//writeJson(item)
+		case &toXml:
+			//	writeXml(item)
+		}
+		fmt.Println(item)
+		fmt.Println("$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$")
+		//db.Create(item)
+		db.Save(&item)
+	}
 
-			if se.Name.Local == "message" && se.Name.Space == "" {
-				var item lib.Message
-				decoder.DecodeElement(&item, &se)
-				switch outFlag {
-				case &toJson:
-					writeJson(item)
-				case &toXml:
-					writeXml(item)
-				}
-			}
-
-			if se.Name.Local == "meta" && se.Name.Space == "" {
-				var item lib.Meta
-				decoder.DecodeElement(&item, &se)
-				switch outFlag {
-				case &toJson:
-					writeJson(item)
-				case &toXml:
-					writeXml(item)
-				}
-			}
-
+	if se.Name.Local == "meta" && se.Name.Space == "" {
+		var item lib.Meta
+		decoder.DecodeElement(&item, &se)
+		switch outFlag {
+		case &toJson:
+			//writeJson(item)
+		case &toXml:
+			//writeXml(item)
 		}
 	}
 }
