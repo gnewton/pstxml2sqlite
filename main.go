@@ -103,7 +103,7 @@ func main() {
 			handleFeed(se, decoder, outFlag, tx)
 		}
 		counter = counter + 1
-		if counter == 10000 {
+		if counter == 5000 {
 			tx.Commit()
 			counter = 0
 			tx = db.Begin()
