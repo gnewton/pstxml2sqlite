@@ -5,23 +5,15 @@ package main
 /////////////////////////////////////////////////////////////////
 
 import (
-	"bufio"
-	"compress/bzip2"
-	"compress/gzip"
-	"encoding/base64"
-	"encoding/json"
 	"encoding/xml"
 	"flag"
-	"fmt"
+	//"fmt"
 	"strconv"
 	//"github.com/davecgh/go-spew/spew"
 	lib "github.com/gnewton/pstxml2sqlite/pstxml2sqlitestructs"
 	"github.com/jinzhu/gorm"
 	_ "github.com/jinzhu/gorm/dialects/sqlite"
-	"io"
 	"log"
-	"os"
-	"strings"
 )
 
 const (
@@ -53,8 +45,6 @@ func init() {
 }
 
 var out int = -1
-
-var counters map[string]*int
 
 func main() {
 
@@ -96,7 +86,7 @@ func main() {
 	tx := db.Begin()
 
 	decoder := xml.NewDecoder(reader)
-	counters = make(map[string]*int)
+
 	for {
 
 		token, _ := decoder.Token()
@@ -123,90 +113,34 @@ func main() {
 	if xmlFile != nil {
 		defer xmlFile.Close()
 	}
-	if countAll {
-		for k, v := range counters {
-			fmt.Println(*v, k)
-		}
-	}
 }
 
 var idCounter int64 = 0
 
 func handleFeed(se xml.StartElement, decoder *xml.Decoder, outFlag *bool, db *gorm.DB) {
-	fmt.Println(se.Name.Local)
+
 	if se.Name.Local == "message" && se.Name.Space == "" {
-		var item lib.Message
-		decoder.DecodeElement(&item, &se)
-		item.Id = idCounter
+		var message lib.Message
+		decoder.DecodeElement(&message, &se)
+		message.Id = idCounter
 
-		fmt.Println(idCounter)
+		//fmt.Println(idCounter)
 
-		db.Create(&item)
-		//db.Save(&item)
-		if item.Recipients != nil {
-			saveRecipients(item.Recipients.Recipient, db)
+		fixMessageFields(&message)
+
+		db.Create(&message)
+		//db.Save(&message)
+		if message.Recipients != nil {
+			saveRecipients(message.Recipients.Recipient, db)
 		}
 
-		if item.Attachments != nil {
-			saveAttachments(item.Attachments.Attachment, db)
+		if message.Attachments != nil {
+			saveAttachments(message.Attachments.Attachment, db)
 		}
 
 		idCounter++
 
 	}
-
-	if se.Name.Local == "meta" && se.Name.Space == "" {
-		var item lib.Meta
-		decoder.DecodeElement(&item, &se)
-		switch outFlag {
-		case &toJson:
-			//writeJson(item)
-		case &toXml:
-			//writeXml(item)
-		}
-	}
-}
-
-func makeKey(space string, local string) string {
-	if space == "" {
-		space = "_"
-	}
-	return space + ":" + local
-}
-
-func incrementCounter(space string, local string) {
-	key := makeKey(space, local)
-
-	counter, ok := counters[key]
-	if !ok {
-		n := 1
-		counters[key] = &n
-	} else {
-		newv := *counter + 1
-		counters[key] = &newv
-	}
-}
-
-func genericReader(filename string) (io.Reader, *os.File, error) {
-	if filename == "" {
-		return bufio.NewReader(os.Stdin), nil, nil
-	}
-	file, err := os.Open(filename)
-	if err != nil {
-		return nil, nil, err
-	}
-	if strings.HasSuffix(filename, "bz2") {
-		return bufio.NewReader(bzip2.NewReader(bufio.NewReader(file))), file, err
-	}
-
-	if strings.HasSuffix(filename, "gz") {
-		reader, err := gzip.NewReader(bufio.NewReader(file))
-		if err != nil {
-			return nil, nil, err
-		}
-		return bufio.NewReader(reader), file, err
-	}
-	return bufio.NewReader(file), file, err
 }
 
 func numberOfBoolsSet(a []*bool) (int, *bool) {
@@ -241,49 +175,62 @@ func saveRecipients(recips []*lib.Recipient, db *gorm.DB) {
 func saveAttachments(attachments []*lib.Attachment, db *gorm.DB) {
 	for i := 0; i < len(attachments); i++ {
 		attach := attachments[i]
-		log.Println("-----------------------------------------------------------------------")
-		log.Println(idCounter)
-		log.Println(i)
-		log.Println(attach.AttrFilename)
+		log.Println("Filename: " + attach.AttrFilename)
 
 		attach.MessageId = idCounter
 		//if attach.Content != nil {
 		//attach.Base64Content = attach.Content.Text
-		//}
-		log.Println("attach.AttrSize")
-		log.Println(attach.AttrSize)
-		log.Println("attach.Content.Text")
-		log.Println(len(attach.Content.Text))
-		if len(attach.Content.Text) < 100 {
-			log.Println("attach.Content.Text=[" + attach.Content.Text + "]")
-		}
+		//}ton
 		attach.Size = 0
 		if len(attach.AttrSize) > 0 {
 			size, err := strconv.ParseInt(attach.AttrSize, 10, 64)
 			if err != nil {
 				log.Fatal(err)
 			} else {
-				log.Println("size=" + attach.AttrSize)
 				attach.Size = size
 			}
 		}
 		if len(attach.Content.Text) > 0 {
 			var err error
-			attach.RawContent, err = base64.StdEncoding.DecodeString(attach.Content.Text)
-			log.Println("rawContentLengfth")
-			log.Println(len(attach.RawContent))
+			attach.RawContent, err = decodeBase64(attach.Content.Text)
 			if err != nil {
 				log.Fatal(err)
-			}
-			if len(attach.Content.Text) < 100 {
-				log.Println("rawContentLengfth")
-				log.Println(string(attach.RawContent))
 			}
 			attach.RawSize = len(attach.RawContent)
 		}
 
 		db.Create(&attach)
 		//db.Save(&attach)
-		log.Println()
 	}
+}
+
+func fixMessageFields(mes *lib.Message) {
+	mes.Received, _ = string2date(mes.OrigReceived)
+
+	// booleans
+	mes.IsCcMe = string2bool(mes.AttrCcMe)
+	mes.IsForwarded = string2bool(mes.AttrForwarded)
+	//mes.IsFromMe = string2bool(mes.AttrFromMe)
+	//mes.IsMessageRecipMe = string2bool(mes.AttrMessageRecipMe)
+	//mes.IsMessageToMe = string2bool(mes.AttrMessageToMe)
+	mes.IsRead = string2bool(mes.AttrRead)
+	mes.IsReplied = string2bool(mes.AttrReplied)
+	mes.IsResponseRequested = string2bool(mes.AttrResponseRequested)
+	mes.IsResent = string2bool(mes.AttrResent)
+	mes.IsSubmitted = string2bool(mes.AttrSubmitted)
+	mes.IsUnmodified = string2bool(mes.AttrUnmodified)
+	mes.IsUnsent = string2bool(mes.AttrUnsent)
+
+	//base64 encoded
+	tmpBodyRaw, err := decodeBase64(mes.Body)
+	if err != nil {
+		log.Fatal(err)
+	}
+	mes.BodyRaw = string(tmpBodyRaw)
+	//log.Println("++")
+
+	//log.Println(tmpBodyRaw)
+	//log.Println("**")
+	//log.Println(mes.BodyRaw)
+	//log.Println("@@ #")
 }
