@@ -5,21 +5,26 @@ package pstxml2sqlitestructs
 /////////////////////////////////////////////////////////////////
 
 type ChidleyRoot314159 struct {
-	Messages *Messages `xml:" messages,omitempty" json:"messages,omitempty"`
+	Messages *Messages `xml:"messages,omitempty" json:"messages,omitempty"`
 }
 
 type Attachment struct {
-	AttrAttachType                   string   `xml:" attachType,attr"  json:",omitempty"`
-	AttrAttachmentContentDisposition string   `xml:" attachmentContentDisposition,attr"  json:",omitempty"`
-	AttrFilename                     string   `xml:" filename,attr"  json:",omitempty"`
-	AttrMime                         string   `xml:" mime,attr"  json:",omitempty"`
-	AttrSize                         string   `xml:" size,attr"  json:",omitempty"`
-	Content                          *Content `xml:" content,omitempty" json:"content,omitempty"`
-	Sha1Base64                       string   `xml:" sha1Base64,omitempty" json:"sha1Base64,omitempty"`
+	MessageId                        int64
+	AttrAttachType                   string   `xml:"attachType,attr"  json:",omitempty"`
+	AttrAttachmentContentDisposition string   `xml:"attachmentContentDisposition,attr"  json:",omitempty"`
+	AttrFilename                     string   `xml:"filename,attr"  json:",omitempty"`
+	AttrMime                         string   `xml:"mime,attr"  json:",omitempty"`
+	AttrSize                         string   `gorm:"-" xml:"size,attr"  json:",omitempty"`
+	Size                             int64    `xml:"length,attr"  json:",omitempty"`
+	Content                          *Content `xml:"content,omitempty" json:"content,omitempty"`
+	//Base64Content                    string
+	RawContent []byte
+	RawSize    int
+	Sha1Base64 string `xml:"sha1Base64,omitempty" json:"sha1Base64,omitempty"`
 }
 
 type Attachments struct {
-	Attachment []*Attachment `xml:" attachment,omitempty" json:"attachment,omitempty"`
+	Attachment []*Attachment `xml:"attachment,omitempty" json:"attachment,omitempty"`
 }
 
 type Content struct {
@@ -27,74 +32,70 @@ type Content struct {
 }
 
 type Message struct {
-	HasAttachments      bool   `xml:" attachments,attr"  json:",omitempty"`
-	AttrAttachmentsOrig string `gorm:"-" xml:" attachments,attr"  json:",omitempty"`
-	AttrCcMe            string `xml:" ccMe,attr"  json:",omitempty"`
-	IsCcMe              bool   `xml:" ccMe,attr"  json:",omitempty"`
+	Id                  int64
+	HasAttachments      bool   `xml:"hattachments,attr"  json:",omitempty"`
+	AttrAttachmentsOrig string `gorm:"-" xml:"attachments,attr"  json:",omitempty"`
+	AttrCcMe            string `xml:"ccMe,attr"  json:",omitempty"`
+	IsCcMe              bool   `xml:"hccMe,attr"  json:",omitempty"`
 
-	AttrFolderDepth           string       `xml:" folderDepth,attr"  json:",omitempty"`
-	AttrFoldersPath           string       `xml:" foldersPath,attr"  json:",omitempty"`
-	AttrForwarded             string       `xml:" forwarded,attr"  json:",omitempty"`
-	IsForwarded               bool         `xml:" forwarded,attr"  json:",omitempty"`
-	AttrFromMe                string       `xml:" fromMe,attr"  json:",omitempty"`
-	IsFromMe                  bool         `xml:" fromMe,attr"  json:",omitempty"`
-	AttrImportance            string       `xml:" importance,attr"  json:",omitempty"`
-	AttrInReplyToId           string       `xml:" inReplyToId,attr"  json:",omitempty"`
-	AttrInternetArticleNumber string       `xml:" internetArticleNumber,attr"  json:",omitempty"`
-	AttrMessageRecipMe        string       `xml:" messageRecipMe,attr"  json:",omitempty"`
-	IsMessageRecipMe          bool         `xml:" messageRecipMe,attr"  json:",omitempty"`
-	AttrMessageToMe           string       `xml:" messageToMe,attr"  json:",omitempty"`
-	IsMessageToMe             bool         `xml:" messageToMe,attr"  json:",omitempty"`
-	AttrNumAttachments        string       `xml:" numAttachments,attr"  json:",omitempty"`
-	AttrPriority              string       `xml:" priority,attr"  json:",omitempty"`
-	AttrRead                  string       `xml:" read,attr"  json:",omitempty"`
-	IsRead                    bool         `xml:" read,attr"  json:",omitempty"`
-	AttrReplied               string       `xml:" replied,attr"  json:",omitempty"`
-	IsReplied                 bool         `xml:" replied,attr"  json:",omitempty"`
-	AttrReplyRequested        string       `xml:" replyRequested,attr"  json:",omitempty"`
-	IsReplyRequested          bool         `xml:" replyRequested,attr"  json:",omitempty"`
-	AttrResent                string       `xml:" resent,attr"  json:",omitempty"`
-	AttrResponseRequested     string       `xml:" responseRequested,attr"  json:",omitempty"`
-	AttrSensitivity           string       `xml:" sensitivity,attr"  json:",omitempty"`
-	AttrSubmitted             string       `xml:" submitted,attr"  json:",omitempty"`
-	AttrUnmodified            string       `xml:" unmodified,attr"  json:",omitempty"`
-	AttrUnsent                string       `xml:" unsent,attr"  json:",omitempty"`
-	Attachments               *Attachments `xml:" attachments,omitempty" json:"attachments,omitempty"`
+	AttrFolderDepth           string       `xml:"folderDepth,attr"  json:",omitempty"`
+	AttrFoldersPath           string       `xml:"foldersPath,attr"  json:",omitempty"`
+	IsForwarded               bool         `xml:"forwarded,attr"  json:",omitempty"`
+	IsFromMe                  bool         `xml:"fromMe,attr"  json:",omitempty"`
+	AttrImportance            string       `xml:"importance,attr"  json:",omitempty"`
+	AttrInReplyToId           string       `xml:"inReplyToId,attr"  json:",omitempty"`
+	AttrInternetArticleNumber string       `xml:"internetArticleNumber,attr"  json:",omitempty"`
+	IsMessageRecipMe          bool         `xml:"messageRecipMe,attr"  json:",omitempty"`
+	IsMessageToMe             bool         `xml:"messageToMe,attr"  json:",omitempty"`
+	AttrNumAttachments        string       `xml:"numAttachments,attr"  json:",omitempty"`
+	AttrPriority              string       `xml:"priority,attr"  json:",omitempty"`
+	IsRead                    bool         `xml:"read,attr"  json:",omitempty"`
+	IsReplied                 bool         `xml:"replied,attr"  json:",omitempty"`
+	IsReplyRequested          bool         `xml:"replyRequested,attr"  json:",omitempty"`
+	AttrResent                string       `xml:"resent,attr"  json:",omitempty"`
+	AttrResponseRequested     string       `xml:"responseRequested,attr"  json:",omitempty"`
+	AttrSensitivity           string       `xml:"sensitivity,attr"  json:",omitempty"`
+	AttrSubmitted             string       `xml:"submitted,attr"  json:",omitempty"`
+	AttrUnmodified            string       `xml:"unmodified,attr"  json:",omitempty"`
+	AttrUnsent                string       `xml:"unsent,attr"  json:",omitempty"`
+	Attachments               *Attachments `xml:"attachments,omitempty" json:"attachments,omitempty"`
 	Body                      string       `xml:"body,omitempty" json:"body,omitempty"`
-	From                      string       `xml:" from,omitempty" json:"from,omitempty"`
-	From_name                 string       `xml:" from_name,omitempty" json:"from_name,omitempty"`
-	Message_id                string       `xml:" message_id,omitempty" json:"message_id,omitempty"`
-	//Num_recipients *Num_recipients `xml:" num_recipients,omitempty" json:"num_recipients,omitempty"`
-	Num_recipients string      `xml:" num_recipients,omitempty" json:"num_recipients,omitempty"`
-	Received       string      `xml:" received,omitempty" json:"received,omitempty"`
-	Recipients     *Recipients `xml:" recipients,omitempty" json:"recipients,omitempty"`
-	Return_path    string      `xml:" return_path,omitempty" json:"return_path,omitempty"`
-	Subject        string      `xml:" subject,omitempty" json:"subject,omitempty"`
+	From                      string       `xml:"from,omitempty" json:"from,omitempty"`
+	From_name                 string       `xml:"from_name,omitempty" json:"from_name,omitempty"`
+	Message_id                string       `xml:"message_id,omitempty" json:"message_id,omitempty"`
+	//Num_recipients *Num_recipients `xml:"num_recipients,omitempty" json:"num_recipients,omitempty"`
+	Num_recipients string      `xml:"num_recipients,omitempty" json:"num_recipients,omitempty"`
+	Received       string      `xml:"received,omitempty" json:"received,omitempty"`
+	Recipients     *Recipients `xml:"recipients,omitempty" json:"recipients,omitempty"`
+	Return_path    string      `xml:"return_path,omitempty" json:"return_path,omitempty"`
+	Subject        string      `xml:"subject,omitempty" json:"subject,omitempty"`
 }
 
 type Body struct {
+	// base64 encoded
 	Text string `xml:",chardata" json:",omitempty"`
 }
 
 type Messages struct {
-	Message []*Message `xml:" message,omitempty" json:"message,omitempty"`
-	Meta    *Meta      `xml:" meta,omitempty" json:"meta,omitempty"`
+	Message []*Message `xml:"message,omitempty" json:"message,omitempty"`
+	Meta    *Meta      `xml:"meta,omitempty" json:"meta,omitempty"`
 }
 
 type Meta struct {
-	AttrKey   string `xml:" key,attr"  json:",omitempty"`
-	AttrValue string `xml:" value,attr"  json:",omitempty"`
+	AttrKey   string `xml:"key,attr"  json:",omitempty"`
+	AttrValue string `xml:"value,attr"  json:",omitempty"`
 }
 
 type Recipient struct {
-	AttrEmail string `xml:" email,attr"  json:",omitempty"`
-	AttrMapi  string `xml:" mapi,attr"  json:",omitempty"`
-	AttrName  string `xml:" name,attr"  json:",omitempty"`
-	AttrSmtp  string `xml:" smtp,attr"  json:",omitempty"`
+	MessageId int64
+	AttrEmail string `xml:"email,attr"  json:",omitempty"`
+	AttrMapi  string `xml:"mapi,attr"  json:",omitempty"`
+	AttrName  string `xml:"name,attr"  json:",omitempty"`
+	AttrSmtp  string `xml:"smtp,attr"  json:",omitempty"`
 }
 
 type Recipients struct {
-	Recipient []*Recipient `xml:" recipient,omitempty" json:"recipient,omitempty"`
+	Recipient []*Recipient `xml:"recipient,omitempty" json:"recipient,omitempty"`
 }
 
 ///////////////////////////
