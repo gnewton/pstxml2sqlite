@@ -7,9 +7,11 @@ package main
 import (
 	"encoding/xml"
 	"flag"
+	"fmt"
 	//"fmt"
 	"strconv"
 	//"github.com/davecgh/go-spew/spew"
+	"crypto/sha256"
 	lib "github.com/gnewton/pstxml2sqlite/pstxml2sqlitestructs"
 	"github.com/jinzhu/gorm"
 	_ "github.com/jinzhu/gorm/dialects/sqlite"
@@ -33,7 +35,8 @@ var uniqueFlags = []*bool{
 	&toXml,
 	&countAll}
 
-var filename = "/home/gnewton/work/pst2json/backup-20170719.pst.old.xml.bz2"
+//var filename = "/home/gnewton/work/pst2json/backup-20170719.pst.old.xml.bz2"
+var filename = "/home/gnewton/aafc_email_pst/archive.pst.xml.bz2"
 
 func init() {
 	flag.BoolVar(&toJson, "j", toJson, "Convert to JSON")
@@ -82,6 +85,8 @@ func main() {
 		return
 	}
 
+	dups = make(map[string]bool, 0)
+
 	var counter = 0
 	tx := db.Begin()
 
@@ -98,7 +103,7 @@ func main() {
 			handleFeed(se, decoder, outFlag, tx)
 		}
 		counter = counter + 1
-		if counter == 5000 {
+		if counter == 7000 {
 			tx.Commit()
 			counter = 0
 			tx = db.Begin()
@@ -117,6 +122,8 @@ func main() {
 
 var idCounter int64 = 0
 
+var dups map[string]bool
+
 func handleFeed(se xml.StartElement, decoder *xml.Decoder, outFlag *bool, db *gorm.DB) {
 
 	if se.Name.Local == "message" && se.Name.Space == "" {
@@ -128,6 +135,15 @@ func handleFeed(se xml.StartElement, decoder *xml.Decoder, outFlag *bool, db *go
 
 		fixMessageFields(&message)
 
+		tmp := []byte(message.Received.String() + message.From + message.AttrInternetArticleNumber + message.BodyRaw)
+
+		message.SHA256 = fmt.Sprintf("%x", sha256.Sum256(tmp))
+		log.Println(message.SHA256)
+
+		if _, ok := dups[message.SHA256]; ok {
+			return
+		}
+		dups[message.SHA256] = true
 		db.Create(&message)
 		//db.Save(&message)
 		if message.Recipients != nil {

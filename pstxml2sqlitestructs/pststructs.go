@@ -80,6 +80,7 @@ type Message struct {
 	Recipients                *Recipients  `xml:"recipients,omitempty" json:"recipients,omitempty"`
 	Return_path               string       `xml:"return_path,omitempty" json:"return_path,omitempty"`
 	Subject                   string       `xml:"subject,omitempty" json:"subject,omitempty"`
+	SHA256                    string       `gorm:"index,size:64"`
 }
 
 type Body struct {
