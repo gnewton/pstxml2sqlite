@@ -6,7 +6,6 @@ package main
 
 import (
 	"encoding/xml"
-	"flag"
 	"fmt"
 	//"fmt"
 	"strconv"
@@ -26,7 +25,11 @@ const (
 
 var toJson bool = false
 var toXml bool = false
+
 var oneLevelDown bool = false
+
+var filenames = []string{"all_text2.xml.bz2"}
+
 var countAll bool = false
 var musage bool = false
 
@@ -36,18 +39,7 @@ var uniqueFlags = []*bool{
 	&countAll}
 
 //var filename = "/home/gnewton/work/pst2json/backup-20170719.pst.old.xml.bz2"
-var filename = "/home/gnewton/aafc_email_pst/archive.pst.xml.bz2"
-
-func init() {
-	flag.BoolVar(&toJson, "j", toJson, "Convert to JSON")
-	flag.BoolVar(&toXml, "x", toXml, "Convert to XML")
-	flag.BoolVar(&countAll, "c", countAll, "Count each instance of XML tags")
-	flag.BoolVar(&oneLevelDown, "s", oneLevelDown, "Stream XML by using XML elements one down from the root tag. Good for huge XML files (see http://blog.davidsingleton.org/parsing-huge-xml-files-with-go/")
-	flag.BoolVar(&musage, "h", musage, "Usage")
-	flag.StringVar(&filename, "f", filename, "XML file or URL to read in")
-}
-
-var out int = -1
+//
 
 func main() {
 
@@ -61,70 +53,51 @@ func main() {
 	db.CreateTable(&lib.Recipient{})
 	db.CreateTable(&lib.Attachment{})
 
-	flag.Parse()
-
-	if musage {
-		flag.Usage()
-		return
-	}
-
-	numSetBools, outFlag := numberOfBoolsSet(uniqueFlags)
-	if numSetBools == 0 {
-		flag.Usage()
-		return
-	}
-
-	if numSetBools != 1 {
-		flag.Usage()
-		log.Fatal("Only one of ", uniqueFlags, " can be set at once")
-	}
-
-	reader, xmlFile, err := genericReader(filename)
-	if err != nil {
-		log.Fatal(err)
-		return
-	}
-
-	dups = make(map[string]bool, 0)
-
-	var counter = 0
 	tx := db.Begin()
+	var counter = 0
+	for i := 0; i < len(filenames); i++ {
+		filename := filenames[i]
 
-	decoder := xml.NewDecoder(reader)
+		reader, _, err := genericReader(filename)
+		if err != nil {
+			log.Fatal(err)
+			return
+		}
 
-	for {
+		dups = make(map[string]bool, 0)
 
-		token, _ := decoder.Token()
-		if token == nil {
-			break
+		decoder := xml.NewDecoder(reader)
+
+		for {
+
+			token, _ := decoder.Token()
+			if token == nil {
+				break
+			}
+			switch se := token.(type) {
+			case xml.StartElement:
+				handleFeed(se, decoder, tx)
+			}
+			counter = counter + 1
+			if counter == 7000 {
+				tx.Commit()
+				counter = 0
+				tx = db.Begin()
+			}
+			//if idCounter == 100 {
+			//break
+			//}
 		}
-		switch se := token.(type) {
-		case xml.StartElement:
-			handleFeed(se, decoder, outFlag, tx)
-		}
-		counter = counter + 1
-		if counter == 7000 {
-			tx.Commit()
-			counter = 0
-			tx = db.Begin()
-		}
-		//if idCounter == 100 {
-		//break
-		//}
 	}
 	if counter > 0 {
 		tx.Commit()
 	}
-	if xmlFile != nil {
-		defer xmlFile.Close()
-	}
 }
 
 var idCounter int64 = 0
-
 var dups map[string]bool
 
-func handleFeed(se xml.StartElement, decoder *xml.Decoder, outFlag *bool, db *gorm.DB) {
+func handleFeed(se xml.StartElement, decoder *xml.Decoder, db *gorm.DB) {
 
 	if se.Name.Local == "message" && se.Name.Space == "" {
 		var message lib.Message
@@ -138,11 +111,11 @@ func handleFeed(se xml.StartElement, decoder *xml.Decoder, outFlag *bool, db *go
 		tmp := []byte(message.Received.String() + message.From + message.AttrInternetArticleNumber + message.BodyRaw)
 
 		message.SHA256 = fmt.Sprintf("%x", sha256.Sum256(tmp))
-		log.Println(message.SHA256)
 
 		if _, ok := dups[message.SHA256]; ok {
 			return
 		}
+		log.Println(message.SHA256)
 		dups[message.SHA256] = true
 		db.Create(&message)
 		//db.Save(&message)
@@ -243,10 +216,5 @@ func fixMessageFields(mes *lib.Message) {
 		log.Fatal(err)
 	}
 	mes.BodyRaw = string(tmpBodyRaw)
-	//log.Println("++")
 
-	//log.Println(tmpBodyRaw)
-	//log.Println("**")
-	//log.Println(mes.BodyRaw)
-	//log.Println("@@ #")
 }

@@ -13,7 +13,8 @@ type ChidleyRoot314159 struct {
 }
 
 type Attachment struct {
-	MessageId                        int64
+	Id                               int64    `gorm:"PRIMARY_KEY;AUTO_INCREMENT"`
+	MessageId                        int64    `gorm:"index" `
 	AttrAttachType                   string   `xml:"attachType,attr"  json:",omitempty"`
 	AttrAttachmentContentDisposition string   `xml:"attachmentContentDisposition,attr"  json:",omitempty"`
 	AttrFilename                     string   `xml:"filename,attr"  json:",omitempty"`
@@ -21,10 +22,10 @@ type Attachment struct {
 	AttrSize                         string   `gorm:"-" xml:"size,attr"  json:",omitempty"`
 	Size                             int64    `xml:"length,attr"  json:",omitempty"`
 	Content                          *Content `xml:"content,omitempty" json:"content,omitempty"`
-	//Base64Content                    string
-	RawContent []byte
-	RawSize    int
-	Sha1Base64 string `xml:"sha1Base64,omitempty" json:"sha1Base64,omitempty"`
+	RawContent                       []byte
+	RawSize                          int
+	ExtractedText                    string `gorm:"type:text"`
+	Sha256Hex                        string `gorm:"size:64" xml:"sha256hex,omitempty" json:"sha256hex,omitempty"`
 }
 
 type Attachments struct {
@@ -80,7 +81,7 @@ type Message struct {
 	Recipients                *Recipients  `xml:"recipients,omitempty" json:"recipients,omitempty"`
 	Return_path               string       `xml:"return_path,omitempty" json:"return_path,omitempty"`
 	Subject                   string       `xml:"subject,omitempty" json:"subject,omitempty"`
-	SHA256                    string       `gorm:"index,size:64"`
+	SHA256                    string       `gorm:"index;size:64"`
 }
 
 type Body struct {
@@ -99,6 +100,7 @@ type Meta struct {
 }
 
 type Recipient struct {
+	Id        int64  `gorm:"PRIMARY_KEY,AUTO_INCREMENT"`
 	MessageId int64  `gorm:"index"`
 	AttrEmail string `gorm:"index" xml:"email,attr"  json:",omitempty"`
 	AttrMapi  string `gorm:"index" xml:"mapi,attr"  json:",omitempty"`
