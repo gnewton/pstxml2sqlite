@@ -25,7 +25,7 @@ type Attachment struct {
 	RawContent                       []byte
 	RawSize                          int
 	ExtractedText                    string `gorm:"type:text"`
-	Sha256Hex                        string `gorm:"size:64" xml:"sha256hex,omitempty" json:"sha256hex,omitempty"`
+	Sha256Hex                        string `gorm:"size:64;index" xml:"sha256Hex,omitempty" json:"sha256hex,omitempty"`
 }
 
 type Attachments struct {

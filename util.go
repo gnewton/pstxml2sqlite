@@ -35,6 +35,16 @@ func string2date(str string) (time.Time, error) {
 
 	if err != nil {
 		log.Println(err)
+		log.Println(str)
+		layout := "01-02-2006 06:04:05"
+		t, err = time.Parse(layout, str)
+		if err != nil {
+			log.Println(err)
+			log.Println(str)
+		} else {
+			log.Println("Parsed ok, witd DD-MM-YY")
+			log.Println(str)
+		}
 	}
 	return t, err
 }

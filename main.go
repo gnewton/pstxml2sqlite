@@ -6,11 +6,7 @@ package main
 
 import (
 	"encoding/xml"
-	"fmt"
-	//"fmt"
-	"strconv"
-	//"github.com/davecgh/go-spew/spew"
-	"crypto/sha256"
+
 	lib "github.com/gnewton/pstxml2sqlite/pstxml2sqlitestructs"
 	"github.com/jinzhu/gorm"
 	_ "github.com/jinzhu/gorm/dialects/sqlite"
@@ -28,20 +24,24 @@ var toXml bool = false
 
 var oneLevelDown bool = false
 
-var filenames = []string{"all_text2.xml.bz2"}
+//var filenames = []string{"/home/gnewton/aafc_email_pst/all.xml.bz2"}
+var filenames = []string{"/home/gnewton/work/pst2json/all.xml.bz2"}
 
-var countAll bool = false
+//var filenames = []string{"/home/gnewton/work/pst2json/archive_2018_June15.pst.xml.bz2"}
+
 var musage bool = false
 
 var uniqueFlags = []*bool{
 	&toJson,
-	&toXml,
-	&countAll}
+	&toXml}
 
 //var filename = "/home/gnewton/work/pst2json/backup-20170719.pst.old.xml.bz2"
 //
+var counter = 0
+var countAll int64 = 0
 
 func main() {
+	log.SetFlags(log.LstdFlags | log.Lshortfile)
 
 	db, err := gorm.Open("sqlite3", "a.db")
 	if err != nil {
@@ -54,7 +54,14 @@ func main() {
 	db.CreateTable(&lib.Attachment{})
 
 	tx := db.Begin()
-	var counter = 0
+
+	//c := make(chan *lib.Message, 10)
+
+	saver := &MessageSaver{
+		db: tx,
+		//c:  c,
+	}
+
 	for i := 0; i < len(filenames); i++ {
 		filename := filenames[i]
 
@@ -76,145 +83,19 @@ func main() {
 			}
 			switch se := token.(type) {
 			case xml.StartElement:
-				handleFeed(se, decoder, tx)
+				handleFeed(saver, se, decoder, tx)
 			}
-			counter = counter + 1
-			if counter == 7000 {
+
+			if counter == 500 {
 				tx.Commit()
 				counter = 0
 				tx = db.Begin()
+				saver.db = tx
+				log.Println(countAll)
 			}
-			//if idCounter == 100 {
-			//break
-			//}
 		}
 	}
 	if counter > 0 {
 		tx.Commit()
 	}
-}
-
-var idCounter int64 = 0
-var dups map[string]bool
-
-func handleFeed(se xml.StartElement, decoder *xml.Decoder, db *gorm.DB) {
-
-	if se.Name.Local == "message" && se.Name.Space == "" {
-		var message lib.Message
-		decoder.DecodeElement(&message, &se)
-		message.Id = idCounter
-
-		//fmt.Println(idCounter)
-
-		fixMessageFields(&message)
-
-		tmp := []byte(message.Received.String() + message.From + message.AttrInternetArticleNumber + message.BodyRaw)
-
-		message.SHA256 = fmt.Sprintf("%x", sha256.Sum256(tmp))
-
-		if _, ok := dups[message.SHA256]; ok {
-			return
-		}
-		log.Println(message.SHA256)
-		dups[message.SHA256] = true
-		db.Create(&message)
-		//db.Save(&message)
-		if message.Recipients != nil {
-			saveRecipients(message.Recipients.Recipient, db)
-		}
-
-		if message.Attachments != nil {
-			saveAttachments(message.Attachments.Attachment, db)
-		}
-
-		idCounter++
-
-	}
-}
-
-func numberOfBoolsSet(a []*bool) (int, *bool) {
-	var setBool *bool
-	counter := 0
-	for i := 0; i < len(a); i++ {
-		if *a[i] {
-			counter += 1
-			setBool = a[i]
-		}
-	}
-	return counter, setBool
-}
-
-func saveRecipients(recips []*lib.Recipient, db *gorm.DB) {
-	for i := 0; i < len(recips); i++ {
-		recip := recips[i]
-		recip.MessageId = idCounter
-		db.Create(&recip)
-		//db.Save(&recip)
-	}
-}
-
-// We realy only want attachmentType=1, which has the actual file. The others are references.
-// From: https://docs.microsoft.com/en-us/office/vba/api/outlook.olattachmenttype
-// Name 	  Value 	Description
-// olByReference  4 	This value is no longer supported since Microsoft Outlook 2007. Use olByValue to attach a copy of a file in the file system.
-// olByValue 	  1 	The attachment is a copy of the original file and can be accessed even if the original file is removed.
-// olEmbeddeditem 5 	The attachment is an Outlook message format file (.msg) and is a copy of the original message.
-// olOLE 	  6 	The attachment is an OLE document.
-//
-func saveAttachments(attachments []*lib.Attachment, db *gorm.DB) {
-	for i := 0; i < len(attachments); i++ {
-		attach := attachments[i]
-		log.Println("Filename: " + attach.AttrFilename)
-
-		attach.MessageId = idCounter
-		//if attach.Content != nil {
-		//attach.Base64Content = attach.Content.Text
-		//}ton
-		attach.Size = 0
-		if len(attach.AttrSize) > 0 {
-			size, err := strconv.ParseInt(attach.AttrSize, 10, 64)
-			if err != nil {
-				log.Fatal(err)
-			} else {
-				attach.Size = size
-			}
-		}
-		if len(attach.Content.Text) > 0 {
-			var err error
-			attach.RawContent, err = decodeBase64(attach.Content.Text)
-			if err != nil {
-				log.Fatal(err)
-			}
-			attach.RawSize = len(attach.RawContent)
-		}
-
-		db.Create(&attach)
-		//db.Save(&attach)
-	}
-}
-
-func fixMessageFields(mes *lib.Message) {
-	mes.Received, _ = string2date(mes.OrigReceived)
-
-	// booleans
-	mes.IsCcMe = string2bool(mes.AttrCcMe)
-	mes.IsForwarded = string2bool(mes.AttrForwarded)
-	//mes.IsFromMe = string2bool(mes.AttrFromMe)
-	//mes.IsMessageRecipMe = string2bool(mes.AttrMessageRecipMe)
-	//mes.IsMessageToMe = string2bool(mes.AttrMessageToMe)
-	mes.IsRead = string2bool(mes.AttrRead)
-	mes.IsReplied = string2bool(mes.AttrReplied)
-	mes.IsResponseRequested = string2bool(mes.AttrResponseRequested)
-	mes.IsResent = string2bool(mes.AttrResent)
-	mes.IsSubmitted = string2bool(mes.AttrSubmitted)
-	mes.IsUnmodified = string2bool(mes.AttrUnmodified)
-	mes.IsUnsent = string2bool(mes.AttrUnsent)
-
-	//base64 encoded
-	tmpBodyRaw, err := decodeBase64(mes.Body)
-	if err != nil {
-		log.Fatal(err)
-	}
-	mes.BodyRaw = string(tmpBodyRaw)
-
 }
