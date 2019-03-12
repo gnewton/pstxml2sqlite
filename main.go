@@ -5,12 +5,13 @@ package main
 /////////////////////////////////////////////////////////////////
 
 import (
+	"database/sql"
 	"encoding/xml"
-
 	lib "github.com/gnewton/pstxml2sqlite/pstxml2sqlitestructs"
 	"github.com/jinzhu/gorm"
 	_ "github.com/jinzhu/gorm/dialects/sqlite"
 	"log"
+	"sync"
 )
 
 const (
@@ -47,19 +48,43 @@ func main() {
 	if err != nil {
 		panic("failed to connect database")
 	}
-	defer db.Close()
+	//defer db.Close()
 
 	db.CreateTable(&lib.Message{})
 	db.CreateTable(&lib.Recipient{})
 	db.CreateTable(&lib.Attachment{})
+	db.Close()
 
-	tx := db.Begin()
+	db2, err := sql.Open("sqlite3", "file:a.db")
+	if err != nil {
+		log.Fatal(err)
+	}
+	tx2, err := db2.Begin()
+	if err != nil {
+		log.Fatal(err)
+	}
 
-	//c := make(chan *lib.Message, 10)
+	c := make(chan []*lib.Message, 200)
+
+	stmt, err := newStatement(tx2)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	saver := &MessageSaver{
-		db: tx,
-		//c:  c,
+		tx2:  tx2,
+		db2:  db2,
+		c:    c,
+		stmt: stmt,
+	}
+
+	var wg sync.WaitGroup
+
+	num := 5
+
+	for i := 0; i < num; i++ {
+		go saver.run(&wg)
+		wg.Add(1)
 	}
 
 	for i := 0; i < len(filenames); i++ {
@@ -72,30 +97,24 @@ func main() {
 		}
 
 		dups = make(map[string]bool, 0)
-
 		decoder := xml.NewDecoder(reader)
 
 		for {
-
 			token, _ := decoder.Token()
 			if token == nil {
 				break
 			}
 			switch se := token.(type) {
 			case xml.StartElement:
-				handleFeed(saver, se, decoder, tx)
+				handleFeed(saver, se, decoder, c)
 			}
 
-			if counter == 500 {
-				tx.Commit()
-				counter = 0
-				tx = db.Begin()
-				saver.db = tx
-				log.Println(countAll)
-			}
 		}
 	}
 	if counter > 0 {
-		tx.Commit()
+		tx2.Commit()
 	}
+	close(c)
+
+	wg.Wait()
 }
