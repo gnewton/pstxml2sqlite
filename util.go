@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"compress/bzip2"
 	"compress/gzip"
+	"database/sql"
 	"encoding/base64"
 	"io"
 	"log"
@@ -28,16 +29,31 @@ func string2bool(s string) bool {
 
 }
 
-func string2date(str string) (time.Time, error) {
+const baseDateLayout = "02-01-2006 06:04:05"
+const altDateLayout = "01-02-2006 06:04:05"
 
-	layout := "02-01-2006 06:04:05"
-	t, err := time.Parse(layout, str)
+const missingDateString = "01-01-1969 00:00:01"
+
+var missingDate *time.Time
+
+func string2date(str string) (*time.Time, error) {
+
+	if str == "" {
+		if missingDate == nil {
+			t, err := time.Parse(baseDateLayout, missingDateString)
+			if err != nil {
+				log.Println(err)
+			}
+			missingDate = &t
+		}
+		return missingDate, nil
+	}
+	t, err := time.Parse(baseDateLayout, str)
 
 	if err != nil {
 		log.Println(err)
 		log.Println(str)
-		layout := "01-02-2006 06:04:05"
-		t, err = time.Parse(layout, str)
+		t, err = time.Parse(altDateLayout, str)
 		if err != nil {
 			log.Println(err)
 			log.Println(str)
@@ -46,7 +62,7 @@ func string2date(str string) (time.Time, error) {
 			log.Println(str)
 		}
 	}
-	return t, err
+	return &t, err
 }
 
 func genericReader(filename string) (io.Reader, *os.File, error) {
@@ -69,4 +85,20 @@ func genericReader(filename string) (io.Reader, *os.File, error) {
 		return bufio.NewReader(reader), file, err
 	}
 	return bufio.NewReader(file), file, err
+}
+
+var pragmas = []string{"PRAGMA synchronous=off", "PRAGMA journal_mode=off", "PRAGMA cache_size=20000", "PRAGMA locking_mode=exclusive", "PRAGMA temp_store=memory"}
+
+func setPragmas(db *sql.DB) error {
+
+	for i := 0; i < len(pragmas); i++ {
+		log.Println(pragmas[i])
+		_, err := db.Exec(pragmas[i])
+
+		if err != nil {
+			log.Println("Bad pragma: " + pragmas[i])
+			return err
+		}
+	}
+	return nil
 }

@@ -1,10 +1,10 @@
 package main
 
 import (
-	//"crypto/sha256"
+	"crypto/sha256"
 	"database/sql"
 	"encoding/xml"
-	//"fmt"
+	"fmt"
 	lib "github.com/gnewton/pstxml2sqlite/pstxml2sqlitestructs"
 	"github.com/jinzhu/gorm"
 	"log"
@@ -17,7 +17,9 @@ var dups map[string]bool
 
 var chunk []*lib.Message = nil
 var n int
-var chunkSize = 50
+
+const chunkSize = 200
+const TxSize = 5000
 
 func handleFeed(saver *MessageSaver, se xml.StartElement, decoder *xml.Decoder, c chan []*lib.Message) {
 	if chunk == nil {
@@ -26,17 +28,14 @@ func handleFeed(saver *MessageSaver, se xml.StartElement, decoder *xml.Decoder, 
 	}
 	if se.Name.Local == "message" && se.Name.Space == "" {
 		idCounter++
-		//log.Println(countAll, counter)
 		counter++
 		countAll++
 		var message lib.Message
 		decoder.DecodeElement(&message, &se)
 		message.Id = idCounter
-		//saver.save(&message)
 		chunk[n] = &message
 		n++
 		if n == chunkSize {
-			//c <- &message
 			c <- chunk
 			chunk = nil
 		}
@@ -44,20 +43,27 @@ func handleFeed(saver *MessageSaver, se xml.StartElement, decoder *xml.Decoder, 
 }
 
 type MessageSaver struct {
-	stmt    *sql.Stmt
-	db, tx  *gorm.DB
-	db2     *sql.DB
-	tx2     *sql.Tx
-	c       chan []*lib.Message
-	counter int32
-	mux     sync.Mutex
+	messageStmt, recipStmt, attachStmt *sql.Stmt
+	db2                                *sql.DB
+	tx2                                *sql.Tx
+	c                                  chan []*lib.Message
+	mux                                *sync.Mutex
 }
 
-const messageSql = "insert into messages(attr_folder_depth,attr_folders_path,attr_importance,attr_in_reply_to_id,attr_internet_article_number,attr_num_attachments,attr_priority,attr_response_requested,attr_sensitivity,body_raw,\"from\",from_name,has_attachments,id,is_cc_me,is_forwarded,is_from_me,is_message_recip_me,is_message_to_me,is_read,is_replied,is_response_requested,is_resent,is_submitted,is_unsent,is_unmodified,message_id,num_recipients,received ,return_path,subject,sha256) values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+var txCounter = 0
 
-func newStatement(tx *sql.Tx) (*sql.Stmt, error) {
-	//return tx.Prepare("insert into messages(body_raw) values(?)")
-	return tx.Prepare(messageSql)
+const messageSql = "INSERT INTO messages(attr_folder_depth,attr_folders_path,attr_importance,attr_in_reply_to_id,attr_internet_article_number,attr_num_attachments,attr_priority,attr_response_requested,attr_sensitivity,body_raw,\"from\",from_name,has_attachments,id,is_cc_me,is_forwarded,is_from_me,is_message_recip_me,is_message_to_me,is_read,is_replied,is_response_requested,is_resent,is_submitted,is_unsent,is_unmodified,message_id,num_recipients,received ,return_path,subject,sha256) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+
+const attachmentSql = "INSERT INTO attachments(id,message_id,attr_attach_type,attr_attachment_content_disposition,attr_filename,attr_mime,size,raw_content,raw_size,extracted_text,sha256_hex) VALUES (?,?,?,?,?,?,?,?,?,?,?)"
+
+const recipSql = "INSERT INTO recipients(id,message_id,attr_email,attr_mapi,attr_name,attr_smtp) values (?,?,?,?,?,?)"
+
+func newStatement(tx *sql.Tx, sql string) (*sql.Stmt, error) {
+	stmt, err := tx.Prepare(sql)
+	if err != nil {
+		log.Println("Bad sql:", sql)
+	}
+	return stmt, err
 
 }
 
@@ -68,46 +74,60 @@ func (saver *MessageSaver) run(wg *sync.WaitGroup) {
 	for messages := range saver.c {
 		for i, _ := range messages {
 			message := messages[i]
+			if message == nil {
+				continue
+			}
 			//log.Println(i, message.Id)
 			fixMessageFields(message)
 
-			//tmp := []byte(message.Received.String() + message.From + message.AttrInternetArticleNumber + message.BodyRaw)
+			tmp := []byte(message.Received.String() + message.From + message.AttrInternetArticleNumber + message.BodyRaw)
 
-			//message.SHA256 = fmt.Sprintf("%x", sha256.Sum256(tmp))
-			//saver.mux.Lock()
-			//if _, ok := dups[message.SHA256]; ok {
-			//	saver.mux.Unlock()
-			//	return
-			//}
+			message.SHA256 = fmt.Sprintf("%x", sha256.Sum256(tmp))
+			saver.mux.Lock()
+			if _, ok := dups[message.SHA256]; ok {
+				saver.mux.Unlock()
+				return
+			}
 
 			dups[message.SHA256] = true
-			//saver.mux.Unlock()
+			saver.mux.Unlock()
 
 			if message.Recipients != nil {
-				prepareRecipients(message.Recipients.Recipient, saver.db, idCounter)
+				prepareRecipients(message.Recipients.Recipient, idCounter)
 			}
 
 			if message.Attachments != nil {
-				prepareAttachments(message.Attachments.Attachment, saver.db, idCounter)
+				prepareAttachments(message.Attachments.Attachment, idCounter)
 			}
 			//saveAll(message, saver.db)
 			saver.mux.Lock()
-			newSave(message, saver.stmt)
-			saver.counter++
-			if saver.counter == 1000 {
+			newSave(message, saver.messageStmt, saver.attachStmt, saver.recipStmt)
+			txCounter++
+			countAll2++
+			if txCounter == TxSize {
 				saver.tx2.Commit()
-				saver.counter = 0
+				log.Println("COMMIT")
+				txCounter = 0
 				var err error
 				saver.tx2, err = saver.db2.Begin()
 				if err != nil {
 					log.Fatal(err)
 				}
-				saver.db = saver.tx
-				saver.stmt, err = newStatement(saver.tx2)
+				saver.messageStmt, err = newStatement(saver.tx2, messageSql)
+				if err != nil {
+					log.Fatal(err)
+				}
+				saver.attachStmt, err = newStatement(saver.tx2, attachmentSql)
+				if err != nil {
+					log.Fatal(err)
+				}
+				saver.recipStmt, err = newStatement(saver.tx2, recipSql)
 				if err != nil {
 					log.Fatal(err)
 				}
 				log.Println(countAll)
+				log.Println("countAll2")
+				log.Println(countAll2)
 			}
 
 			saver.mux.Unlock()
@@ -115,15 +135,62 @@ func (saver *MessageSaver) run(wg *sync.WaitGroup) {
 
 	}
 }
-func newSave(message *lib.Message, stmt *sql.Stmt) {
-	//log.Println(message.Id)
-	//"attr_folder_depth" varchar(255),"attr_folders_path" varchar(255),"attr_importance" varchar(255),"attr_in_reply_to_id" varchar(255),"attr_internet_article_number" varchar(255),"attr_num_attachments" varchar(255),"attr_priority" varchar(255),"attr_response_requested" varchar(255),"attr_sensitivity" varchar(255),"body_raw" text,"from" varchar(255),"from_name" varchar(255),"has_attachments" bool,"id" integer primary key autoincrement,"is_cc_me" bool,"is_forwarded" bool,"is_from_me" bool,"is_message_recip_me" bool,"is_message_to_me" bool,"is_read" bool,"is_replied" bool,"is_response_requested" bool,"is_resent" bool,"is_submitted" bool,"is_unsent" bool,"is_unmodified" bool,"message_id" varchar(255),"num_recipients" varchar(255),"received" datetime,"return_path" varchar(255),"subject" varchar(255),"sha256" varchar(64) );
+func newSave(message *lib.Message, messageStmt, attachStmt, recipStmt *sql.Stmt) {
 
 	//_, err := stmt.Exec(message.Body)
-	_, err := stmt.Exec(message.AttrFolderDepth, message.AttrFoldersPath, message.AttrImportance, message.AttrInReplyToId, message.AttrInternetArticleNumber, message.AttrNumAttachments, message.AttrPriority, message.AttrResponseRequested, message.AttrSensitivity, message.BodyRaw, message.From, message.From_name, message.HasAttachments, message.Id, message.IsCcMe, message.IsForwarded, message.IsFromMe, message.IsMessageRecipMe, message.IsMessageToMe, message.IsRead, message.IsReplied, message.IsResponseRequested, message.IsResent, message.IsSubmitted, message.IsUnsent, message.IsUnmodified, message.Message_id, message.Num_recipients, message.Received, message.Return_path, message.Subject, message.SHA256)
+	_, err := messageStmt.Exec(message.AttrFolderDepth, message.AttrFoldersPath, message.AttrImportance, message.AttrInReplyToId, message.AttrInternetArticleNumber, message.AttrNumAttachments, message.AttrPriority, message.AttrResponseRequested, message.AttrSensitivity, message.BodyRaw, message.From, message.From_name, message.HasAttachments, message.Id, message.IsCcMe, message.IsForwarded, message.IsFromMe, message.IsMessageRecipMe, message.IsMessageToMe, message.IsRead, message.IsReplied, message.IsResponseRequested, message.IsResent, message.IsSubmitted, message.IsUnsent, message.IsUnmodified, message.Message_id, message.Num_recipients, message.Received, message.Return_path, message.Subject, message.SHA256)
 
 	if err != nil {
 		log.Fatal(err)
+	}
+
+	if message.Attachments != nil {
+		atts := message.Attachments.Attachment
+		for i := 0; i < len(atts); i++ {
+			att := atts[i]
+			att.Id = attachCounter
+			att.MessageId = message.Id
+
+			var extractedText string
+			if att.ContentTextExtracted == nil || att.ContentTextExtracted.Content == nil || att.ContentTextExtracted.Content.Data == "" {
+				extractedText = ""
+			} else {
+				extractedText = att.ContentTextExtracted.Content.Data
+			}
+
+			_, err := attachStmt.Exec(att.Id, att.MessageId, att.AttrAttachType, att.AttrAttachmentContentDisposition, att.AttrFilename, att.AttrMime, att.Size, att.RawContent, att.RawSize, NewNullString(extractedText), att.Sha256Hex)
+			if err != nil {
+
+				log.Fatal(err)
+			}
+			attachCounter++
+		}
+	}
+
+	if message.Recipients != nil {
+		recips := message.Recipients.Recipient
+		for i := 0; i < len(recips); i++ {
+			recip := recips[i]
+			recip.Id = recipCounter
+			recip.MessageId = message.Id
+			_, err := recipStmt.Exec(recip.Id, recip.MessageId, recip.AttrEmail, recip.AttrMapi, recip.AttrName, recip.AttrSmtp)
+			if err != nil {
+				log.Fatal(err)
+			}
+			recipCounter++
+		}
+	}
+
+}
+
+// From: https://stackoverflow.com/a/40268372
+func NewNullString(s string) sql.NullString {
+	if len(s) == 0 {
+		return sql.NullString{}
+	}
+	return sql.NullString{
+		String: s,
+		Valid:  true,
 	}
 }
 
@@ -161,7 +228,7 @@ func numberOfBoolsSet(a []*bool) (int, *bool) {
 	return counter, setBool
 }
 
-func prepareRecipients(recips []*lib.Recipient, db *gorm.DB, messageId int64) {
+func prepareRecipients(recips []*lib.Recipient, messageId int64) {
 	for i := 0; i < len(recips); i++ {
 		recip := recips[i]
 		recip.MessageId = messageId
@@ -176,7 +243,7 @@ func prepareRecipients(recips []*lib.Recipient, db *gorm.DB, messageId int64) {
 // olEmbeddeditem 5 	The attachment is an Outlook message format file (.msg) and is a copy of the original message.
 // olOLE 	  6 	The attachment is an OLE document.
 //
-func prepareAttachments(attachments []*lib.Attachment, db *gorm.DB, messageId int64) {
+func prepareAttachments(attachments []*lib.Attachment, messageId int64) {
 	for i := 0; i < len(attachments); i++ {
 		attach := attachments[i]
 		//log.Println("Filename: " + attach.AttrFilename)
@@ -191,9 +258,9 @@ func prepareAttachments(attachments []*lib.Attachment, db *gorm.DB, messageId in
 				attach.Size = size
 			}
 		}
-		if len(attach.Content.Text) > 0 {
+		if len(attach.Content.Data) > 0 {
 			var err error
-			attach.RawContent, err = decodeBase64(attach.Content.Text)
+			attach.RawContent, err = decodeBase64(attach.Content.Data)
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -203,7 +270,8 @@ func prepareAttachments(attachments []*lib.Attachment, db *gorm.DB, messageId in
 }
 
 func fixMessageFields(mes *lib.Message) {
-	mes.Received, _ = string2date(mes.OrigReceived)
+	t, _ := string2date(mes.OrigReceived)
+	mes.Received = *t
 
 	// booleans
 	mes.IsCcMe = string2bool(mes.AttrCcMe)
@@ -220,8 +288,9 @@ func fixMessageFields(mes *lib.Message) {
 	mes.IsUnsent = string2bool(mes.AttrUnsent)
 
 	//base64 encoded
-	tmpBodyRaw, err := decodeBase64(mes.Body)
+	tmpBodyRaw, err := decodeBase64(mes.Body.Data)
 	if err != nil {
+		log.Println(mes.Body)
 		log.Fatal(err)
 	}
 	mes.BodyRaw = string(tmpBodyRaw)
