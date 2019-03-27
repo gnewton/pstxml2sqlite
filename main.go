@@ -28,6 +28,8 @@ const (
 
 var filenames = []string{"/home/gnewton/work/pst2json/archive.xml.bz2"}
 
+//var filenames = []string{"/home/gnewton/work/pst2json/m"}
+
 //
 var counter = 0
 var attachCounter int64 = 0
@@ -49,6 +51,7 @@ func main() {
 	db.CreateTable(&lib.Message{})
 	db.CreateTable(&lib.Recipient{})
 	db.CreateTable(&lib.Attachment{})
+	db.CreateTable(&lib.Filesource{})
 	db.Close()
 
 	db2, err := sql.Open("sqlite3", "file:a.db")

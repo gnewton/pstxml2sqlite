@@ -26,6 +26,11 @@ func handleFeed(saver *MessageSaver, se xml.StartElement, decoder *xml.Decoder, 
 		chunk = make([]*lib.Message, chunkSize)
 		n = 0
 	}
+	if se.Name.Local == "filesource" && se.Name.Space == "" {
+		var fileSource lib.Filesource
+		decoder.DecodeElement(&fileSource, &se)
+		writeFileSource(fileSource)
+	}
 	if se.Name.Local == "message" && se.Name.Space == "" {
 		idCounter++
 		counter++
@@ -40,6 +45,10 @@ func handleFeed(saver *MessageSaver, se xml.StartElement, decoder *xml.Decoder, 
 			chunk = nil
 		}
 	}
+}
+
+func writeFileSource(fileSource lib.Filesource) {
+	log.Println("filesource:", fileSource)
 }
 
 type MessageSaver struct {
@@ -57,6 +66,8 @@ const messageSql = "INSERT INTO messages(attr_folder_depth,attr_folders_path,att
 const attachmentSql = "INSERT INTO attachments(id,message_id,attr_attach_type,attr_attachment_content_disposition,attr_filename,attr_mime,size,raw_content,raw_size,extracted_text,sha256_hex) VALUES (?,?,?,?,?,?,?,?,?,?,?)"
 
 const recipSql = "INSERT INTO recipients(id,message_id,attr_email,attr_mapi,attr_name,attr_smtp) values (?,?,?,?,?,?)"
+
+const fsSql = "INSERT INTO filesources(fid,filename) values (?,?)"
 
 func newStatement(tx *sql.Tx, sql string) (*sql.Stmt, error) {
 	stmt, err := tx.Prepare(sql)
