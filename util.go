@@ -87,7 +87,7 @@ func genericReader(filename string) (io.Reader, *os.File, error) {
 	return bufio.NewReader(file), file, err
 }
 
-var pragmas = []string{"PRAGMA synchronous=off", "PRAGMA journal_mode=off", "PRAGMA cache_size=20000", "PRAGMA locking_mode=exclusive", "PRAGMA temp_store=memory"}
+var pragmas = []string{"PRAGMA synchronous=off", "PRAGMA journal_mode=off", "PRAGMA cache_size=20000", "PRAGMA locking_mode=exclusive"}
 
 func setPragmas(db *sql.DB) error {
 

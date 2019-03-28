@@ -14,6 +14,11 @@ import (
 	"sync"
 )
 
+const chunkSize = 200
+const TxSize = 5000
+const TxLengthSize = 50000000
+const NumWorkers = 5
+
 const (
 	JsonOut = iota
 	XmlOut
@@ -69,7 +74,8 @@ func main() {
 		log.Fatal(err)
 	}
 
-	c := make(chan []*lib.Message, 200)
+	//messagesChannel := make(chan []*lib.Message, 200)
+	messagesChannel := make(chan []*lib.Message, 10)
 
 	messageStmt, err := newStatement(tx2, messageSql)
 	if err != nil {
@@ -86,24 +92,23 @@ func main() {
 		log.Fatal(err)
 	}
 
-	var mux sync.Mutex
+	var transactionMux, dupMux sync.Mutex
 
 	saver := &MessageSaver{
-		tx2:         tx2,
-		db2:         db2,
-		c:           c,
-		messageStmt: messageStmt,
-		attachStmt:  attachStmt,
-		recipStmt:   recipStmt,
-		mux:         &mux,
+		tx2:             tx2,
+		db2:             db2,
+		messagesChannel: messagesChannel,
+		messageStmt:     messageStmt,
+		attachStmt:      attachStmt,
+		recipStmt:       recipStmt,
+		transactionMux:  &transactionMux,
+		dupMux:          &dupMux,
 	}
 
 	var wg sync.WaitGroup
 
-	num := 2
-
-	wg.Add(num)
-	for i := 0; i < num; i++ {
+	wg.Add(NumWorkers)
+	for i := 0; i < NumWorkers; i++ {
 		go saver.run(&wg)
 	}
 
@@ -127,17 +132,22 @@ func main() {
 			}
 			switch se := token.(type) {
 			case xml.StartElement:
-				handleFeed(saver, se, decoder, c)
+				handleFeed(saver, se, decoder, messagesChannel)
 			}
 		}
 	}
 	endCommit := false
 	if chunk != nil {
-		c <- chunk
+		countAll2 += int64(len(chunk))
+		messagesChannel <- chunk
 		endCommit = true
 	}
-	close(c)
+	log.Println("QQ closing messagesChannel")
+	close(messagesChannel)
+	log.Println("QQ closed messagesChannel")
+	log.Println("QQ wg wait")
 	wg.Wait()
+	log.Println("QQ wg wait DONE")
 
 	if counter > 0 || endCommit {
 		log.Println("Final commit")

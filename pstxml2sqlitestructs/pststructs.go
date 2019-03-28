@@ -24,8 +24,14 @@ type Attachment struct {
 	Content                          *Content `xml:"content,omitempty" json:"content,omitempty"`
 	RawContent                       []byte
 	RawSize                          int
-	ExtractedText                    string `gorm:"type:text"`
-	Sha256Hex                        string `gorm:"size:64;index" xml:"sha256Hex,omitempty" json:"sha256hex,omitempty"`
+	Sha256Hex                        string                `gorm:"size:64;index" xml:"sha256Hex,omitempty" json:"sha256hex,omitempty"`
+	Meta                             []*Meta               `xml:"meta,omitempty" json:"meta,omitempty"`
+	ContentTextExtracted             *ContentTextExtracted `xml:"contentTextExtracted,omitempty" json:"contentTextExtracted,omitempty"`
+	ExtractedText                    string                `gorm:"type:text"`
+}
+
+type ContentTextExtracted struct {
+	Content *Content `xml:"content,omitempty" json:"content,omitempty"`
 }
 
 type Attachments struct {
@@ -33,7 +39,14 @@ type Attachments struct {
 }
 
 type Content struct {
-	Text string `xml:",chardata" json:",omitempty"`
+	AttachType      string `xml:"attachType,attr"  json:",omitempty"`
+	ContentEncoding string `xml:"contentEncoding,attr"  json:",omitempty"`
+	Data            string `xml:"data,omitempty" json:"data,omitempty"`
+}
+
+type Meta struct {
+	Key   string `xml:"key,attr"  json:",omitempty"`
+	Value string `xml:"value,attr"  json:",omitempty"`
 }
 
 type Message struct {
@@ -56,32 +69,45 @@ type Message struct {
 	AttrSubmitted             string       `gorm:"-" xml:"submitted,attr"  json:",omitempty"`
 	AttrUnmodified            string       `gorm:"-" xml:"unmodified,attr"  json:",omitempty"`
 	AttrUnsent                string       `gorm:"-" xml:"unsent,attr"  json:",omitempty"`
-	Body                      string       `gorm:"-" xml:"body,omitempty" json:"body,omitempty"`
+	Body                      *Content     `gorm:"-" xml:"body,omitempty" json:"body,omitempty"`
 	BodyRaw                   string       `gorm:"type:text" xml:"body_raw,omitempty" json:"body_raw,omitempty"`
-	From                      string       `gorm:"index" xml:"from,omitempty" json:"from,omitempty"`
-	From_name                 string       `gorm:"index" xml:"from_name,omitempty" json:"from_name,omitempty"`
-	HasAttachments            bool         `gorm:"index" xml:"hattachments,attr"  json:",omitempty"`
-	Id                        int64        `gorm:"index,PRIMARY_KEY"`
-	IsCcMe                    bool         `gorm:"index" xml:"isCcMe,attr"  json:",omitempty"`
-	IsForwarded               bool         `gorm:"index" xml:"isForwarded,attr"  json:",omitempty"`
-	IsFromMe                  bool         `gorm:"index" xml:"fromMe,attr"  json:",omitempty"`
-	IsMessageRecipMe          bool         `xml:"messageRecipMe,attr"  json:",omitempty"`
-	IsMessageToMe             bool         `xml:"messageToMe,attr"  json:",omitempty"`
-	IsRead                    bool         `gorm:"index" xml:"isRead,attr"  json:",omitempty"`
-	IsReplied                 bool         `xml:"isReplied,attr"  json:",omitempty"`
-	IsResponseRequested       bool         `xml:"isReplyRequested,attr"  json:",omitempty"`
-	IsResent                  bool         `xml:"isSent,attr"  json:",omitempty"`
-	IsSubmitted               bool         `xml:"isSubmitted,attr"  json:",omitempty"`
-	IsUnsent                  bool         `xml:"isUnSent,attr"  json:",omitempty"`
-	IsUnmodified              bool         `xml:"isUnModified,attr"  json:",omitempty"`
-	Message_id                string       `gorm:"index" xml:"message_id,omitempty" json:"message_id,omitempty"`
-	Num_recipients            string       `xml:"num_recipients,omitempty" json:"num_recipients,omitempty"`
-	OrigReceived              string       `gorm:"-" xml:"received,omitempty" json:"received,omitempty"`
-	Received                  time.Time    `gorm:"index" xml:"dateReceived,omitempty" json:"dateReceived,omitempty"`
-	Recipients                *Recipients  `xml:"recipients,omitempty" json:"recipients,omitempty"`
-	Return_path               string       `xml:"return_path,omitempty" json:"return_path,omitempty"`
-	Subject                   string       `xml:"subject,omitempty" json:"subject,omitempty"`
-	SHA256                    string       `gorm:"index;size:64"`
+	// From                      string       `xml:"from,omitempty" json:"from,omitempty"`
+	// From_name                 string       `xml:"from_name,omitempty" json:"from_name,omitempty"`
+	// HasAttachments            bool         `xml:"hattachments,attr"  json:",omitempty"`
+	// Id                        int64        `gorm:"index,PRIMARY_KEY"`
+	// IsCcMe                    bool         `xml:"isCcMe,attr"  json:",omitempty"`
+	// IsForwarded               bool         `xml:"isForwarded,attr"  json:",omitempty"`
+	// IsFromMe                  bool         `xml:"fromMe,attr"  json:",omitempty"`
+
+	From           string `gorm:"index" xml:"from,omitempty" json:"from,omitempty"`
+	From_name      string `gorm:"index" xml:"from_name,omitempty" json:"from_name,omitempty"`
+	HasAttachments bool   `gorm:"index" xml:"hattachments,attr"  json:",omitempty"`
+	Id             int64  `gorm:"index,PRIMARY_KEY"`
+	IsCcMe         bool   `gorm:"index" xml:"isCcMe,attr"  json:",omitempty"`
+	IsForwarded    bool   `gorm:"index" xml:"isForwarded,attr"  json:",omitempty"`
+	IsFromMe       bool   `gorm:"index" xml:"fromMe,attr"  json:",omitempty"`
+
+	IsMessageRecipMe bool `xml:"messageRecipMe,attr"  json:",omitempty"`
+	IsMessageToMe    bool `xml:"messageToMe,attr"  json:",omitempty"`
+	IsRead           bool `gorm:"index" xml:"isRead,attr"  json:",omitempty"`
+	//IsRead              bool `xml:"isRead,attr"  json:",omitempty"`
+	IsReplied           bool   `xml:"isReplied,attr"  json:",omitempty"`
+	IsResponseRequested bool   `xml:"isReplyRequested,attr"  json:",omitempty"`
+	IsResent            bool   `xml:"isSent,attr"  json:",omitempty"`
+	IsSubmitted         bool   `xml:"isSubmitted,attr"  json:",omitempty"`
+	IsUnsent            bool   `xml:"isUnSent,attr"  json:",omitempty"`
+	IsUnmodified        bool   `xml:"isUnModified,attr"  json:",omitempty"`
+	Message_id          string `gorm:"index" xml:"message_id,omitempty" json:"message_id,omitempty"`
+	//Message_id     string `xml:"message_id,omitempty" json:"message_id,omitempty"`
+	Num_recipients string    `xml:"num_recipients,omitempty" json:"num_recipients,omitempty"`
+	OrigReceived   string    `gorm:"-" xml:"received,omitempty" json:"received,omitempty"`
+	Received       time.Time `gorm:"index" xml:"dateReceived,omitempty" json:"dateReceived,omitempty"`
+	//Received    time.Time   `xml:"dateReceived,omitempty" json:"dateReceived,omitempty"`
+	Recipients  *Recipients `xml:"recipients,omitempty" json:"recipients,omitempty"`
+	Return_path string      `xml:"return_path,omitempty" json:"return_path,omitempty"`
+	Subject     string      `xml:"subject,omitempty" json:"subject,omitempty"`
+	SHA256      string      `gorm:"index;size:64"`
+	//SHA256 string
 }
 
 type Body struct {
@@ -90,17 +116,24 @@ type Body struct {
 }
 
 type Messages struct {
-	Message []*Message `xml:"message,omitempty" json:"message,omitempty"`
-	Meta    *Meta      `xml:"meta,omitempty" json:"meta,omitempty"`
+	Message    []*Message `xml:"message,omitempty" json:"message,omitempty"`
+	Meta       []*Meta    `xml:"meta,omitempty" json:"meta,omitempty"`
+	Filesource []*Filesource
 }
 
-type Meta struct {
-	AttrKey   string `xml:"key,attr"  json:",omitempty"`
-	AttrValue string `xml:"value,attr"  json:",omitempty"`
+type Filesource struct {
+	Fid      int    `gorm:"index" xml:"id,attr"  json:",omitempty"`
+	Filename string `gorm:"size:4096" xml:"filename,attr"  json:",omitempty"`
 }
 
 type Recipient struct {
-	Id        int64  `gorm:"PRIMARY_KEY,AUTO_INCREMENT"`
+	Id int64 `gorm:"PRIMARY_KEY,AUTO_INCREMENT"`
+	// MessageId int64
+	// AttrEmail string `xml:"email,attr"  json:",omitempty"`
+	// AttrMapi  string `xml:"mapi,attr"  json:",omitempty"`
+	// AttrName  string `xml:"name,attr"  json:",omitempty"`
+	// AttrSmtp  string `xml:"smtp,attr"  json:",omitempty"`
+
 	MessageId int64  `gorm:"index"`
 	AttrEmail string `gorm:"index" xml:"email,attr"  json:",omitempty"`
 	AttrMapi  string `gorm:"index" xml:"mapi,attr"  json:",omitempty"`
@@ -113,3 +146,37 @@ type Recipients struct {
 }
 
 ///////////////////////////
+
+func (a *Attachment) Length() int64 {
+	var l int64 = int64(len(a.Content.Data))
+	if a.ContentTextExtracted != nil && a.ContentTextExtracted.Content != nil {
+		l += int64(len(a.ContentTextExtracted.Content.Data))
+	}
+	return l
+}
+
+func (m *Message) Length() int64 {
+	var size int64
+	size = int64(len(m.BodyRaw) + len(m.Subject))
+	if m.Attachments != nil {
+		for i, _ := range m.Attachments.Attachment {
+			att := m.Attachments.Attachment[i]
+			size += att.Length()
+		}
+
+	}
+	if m.Recipients != nil {
+		for i, _ := range m.Recipients.Recipient {
+			recip := m.Recipients.Recipient[i]
+			size += recip.Length()
+		}
+
+	}
+
+	return size
+}
+
+func (r *Recipient) Length() int64 {
+	return int64(len(r.AttrEmail) + len(r.AttrMapi) + len(r.AttrName) + len(r.AttrSmtp))
+
+}
