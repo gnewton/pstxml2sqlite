@@ -11,12 +11,15 @@ import (
 	"github.com/jinzhu/gorm"
 	_ "github.com/jinzhu/gorm/dialects/sqlite"
 	"log"
+	"os"
+	"runtime"
+	"runtime/pprof"
 	"sync"
 )
 
-const chunkSize = 200
+const chunkSize = 300
 const TxSize = 5000
-const TxLengthSize = 50000000
+const TxLengthSize = 40000000
 const NumWorkers = 5
 
 const (
@@ -44,7 +47,7 @@ var countAll2 int64 = 0
 
 func main() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
-
+	prof()
 	// ADD check to see if file exists
 	// use gorm to create DB
 	db, err := gorm.Open("sqlite3", "a.db")
@@ -162,4 +165,24 @@ func main() {
 	log.Println(countAll)
 	log.Println(countAll2)
 
+	f, err := os.Create("memprofile")
+	if err != nil {
+		log.Fatal("could not create memory profile: ", err)
+	}
+	defer f.Close()
+	runtime.GC() // get up-to-date statistics
+	if err := pprof.WriteHeapProfile(f); err != nil {
+		log.Fatal("could not write memory profile: ", err)
+	}
+}
+
+func prof() {
+	f, err := os.Create("cpuprofile")
+	if err != nil {
+		log.Fatal("could not create CPU profile: ", err)
+	}
+	defer f.Close()
+	if err := pprof.StartCPUProfile(f); err != nil {
+		log.Fatal("could not start CPU profile: ", err)
+	}
 }

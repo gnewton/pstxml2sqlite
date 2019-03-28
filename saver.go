@@ -46,7 +46,7 @@ func (saver *MessageSaver) run(wg *sync.WaitGroup) {
 		log.Println("***** Size chunk:", len(messages))
 		for i, _ := range messages {
 			message := messages[i]
-			countAll2++
+
 			log.Println("")
 			log.Println("---------------------------------------------")
 			log.Println("countAlll2", countAll2)
@@ -56,24 +56,9 @@ func (saver *MessageSaver) run(wg *sync.WaitGroup) {
 				continue
 			}
 			//log.Println(i, message.Id)
+
+			countAll2++
 			fixMessageFields(message)
-
-			/*
-				tmp := []byte(message.Received.String() + message.From + message.AttrInternetArticleNumber + message.BodyRaw)
-
-				message.SHA256 = fmt.Sprintf("%x", sha256.Sum256(tmp))
-
-				saver.dupMux.Lock()
-				// is already in DB?
-				if _, ok := dups[message.SHA256]; ok {
-					saver.dupMux.Unlock()
-					return
-				}
-
-				dups[message.SHA256] = true
-				saver.dupMux.Unlock()
-			*/
-
 			if message.Recipients != nil {
 				prepareRecipients(message.Recipients.Recipient, idCounter)
 			}
@@ -82,14 +67,11 @@ func (saver *MessageSaver) run(wg *sync.WaitGroup) {
 				prepareAttachments(message.Attachments.Attachment, idCounter)
 			}
 			saver.transactionMux.Lock()
-			newSave(message, saver.messageStmt, saver.attachStmt, saver.recipStmt)
-			txCounter++
-			log.Println("messageSize=", message.Length())
-			txSizeCounter += message.Length()
 
+			txSizeCounter += message.Length()
 			if txCounter == TxSize || txSizeCounter > TxLengthSize {
 				if txSizeCounter > TxLengthSize {
-					log.Println("$$$$$$$$$$$$$$$$$$$ txSizeCounter > TxLengthSize", txCounter, txSizeCounter, TxLengthSize)
+					log.Println("$$$$$$$$$$$$$$$$$$$ txSizeCounter > TxLengthSize", txCounter, txSizeCounter-message.Length(), TxLengthSize)
 				}
 				saver.tx2.Commit()
 				log.Println("COMMIT")
@@ -116,7 +98,10 @@ func (saver *MessageSaver) run(wg *sync.WaitGroup) {
 				log.Println("countAll2=", countAll2)
 
 			}
-
+			newSave(message, saver.messageStmt, saver.attachStmt, saver.recipStmt)
+			txCounter++
+			log.Println("messageSize=", message.Length())
+			txSizeCounter += message.Length()
 			saver.transactionMux.Unlock()
 		}
 

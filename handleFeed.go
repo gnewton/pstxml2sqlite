@@ -35,6 +35,18 @@ func handleFeed(saver *MessageSaver, se xml.StartElement, decoder *xml.Decoder, 
 		if err != nil {
 			log.Fatal(err)
 		}
+		/*
+			message.SHA256 = fmt.Sprintf("%x", sha256.Sum256([]byte(message.Received.String()+message.From+message.AttrInternetArticleNumber+message.Body.Data)))
+
+			saver.dupMux.Lock()
+			// is already in DB?
+			if _, ok := dups[message.SHA256]; ok {
+				saver.dupMux.Unlock()
+				continue
+			}
+			dups[message.SHA256] = true
+			saver.dupMux.Unlock()
+		*/
 		message.Id = idCounter
 		chunk[n] = &message
 		n++
